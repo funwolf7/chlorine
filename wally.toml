@@ -1,9 +1,9 @@
 [package]
-name = "hexcede/chlorine"
-description = "A luau sandbox designed to work with Matter."
-version = "0.0.3-pre4"
+name = "funwolf7/chlorine"
+description = "Fixes some bugs with Chlorine. Not really intended to be used by others, but go ahead I guess. "
+version = "0.0.1"
 license = "MIT"
-authors = ["Hexcede"]
+authors = ["Hexcede", "funwolf7"]
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 

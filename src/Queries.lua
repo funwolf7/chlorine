@@ -36,8 +36,12 @@ Queries.all = table.freeze({
 	ByTypeOf = function(query: ByTypeOf, value: any)
 		return rawequal(query.Search, typeof(value))
 	end;
-	ByComposition = function(query: ByComposition, value: Instance)
-		assert(typeof(value) == "Instance", "Invalid ByComposition query, value is not an Instance.")
+	ByComposition = function(query: ByComposition, value: unknown)
+		-- Don't match if value is not an instance
+		if typeof(value) ~= "Instance" then
+			return false
+		end
+
 		if query.MatchMode == "ClassEquals" then
 			return query.Search == value.ClassName
 		elseif query.MatchMode == "IsA" then
@@ -45,8 +49,12 @@ Queries.all = table.freeze({
 		end
 		error(string.format("Invalid ByComposition.Mode %s", query.Mode), 2)
 	end;
-	ByAncestry = function(query: ByAncestry, value: Instance)
-		assert(typeof(value) == "Instance", "Invalid ByAncestry query, value is not an Instance.")
+	ByAncestry = function(query: ByAncestry, value: unknown)
+		-- Don't match if value is not an instance
+		if typeof(value) ~= "Instance" then
+			return false
+		end
+
 		-- If the query is inclusive and the two instances match, return true
 		if query.Inclusive and rawequal(query.Search, value) then
 			return true

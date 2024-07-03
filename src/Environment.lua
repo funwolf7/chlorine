@@ -225,6 +225,23 @@ end
 -- Create reflection for proxies
 local ProxyReflection = Reflection:wrap(proxyMetamethod)
 
+-- Calls a function for the given environment, inputMode, and arguments
+local function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> ...any, ...: any)
+	-- Look for a sandbox
+	local sandbox = environment:GetSandbox()
+	if sandbox then
+		-- Try to claim the running thread
+		sandbox:Claim(coroutine.running())
+	end
+
+	-- Ensure that all arguments get wrapped, even if a C function is being called
+	local args = table.pack(...)
+	wrapList(environment, args)
+
+	-- Call the function
+	return callFunctionTransformed(environment, inputMode, target, table.unpack(args, 1, args.n))
+end
+
 -- Creates a proxy targeting a particular value
 function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin")?): proxyable
 	-- Test env rules
@@ -257,13 +274,32 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 	assert(inputMode == "forLua" or inputMode == "forBuiltin", string.format("Invalid input mode for wrapping: %s", tostring(inputMode)))
 
 	-- Create and freeze proxy
-	local proxy = table.freeze(setmetatable({
-		[PROXY_DATA] = table.freeze({
-			_inputMode = inputMode;
-			_target = target;
-			_environment = self;
-		})
-	}, ProxyReflection))
+	local proxy
+	if type(target) == "function" then
+		-- A function proxy is used so it can be passed to C functions
+		proxy = function(...: any)
+			-- Call the function while wrapping its arguments
+			return proxyFunction(self, inputMode, target, ...)
+		end
+
+		-- Do not allow the function to be unwrapped
+		self._toTarget[proxy] = proxy
+	else
+		-- Regular proxy for objects
+		proxy = table.freeze(setmetatable({
+			[PROXY_DATA] = table.freeze({
+				_inputMode = inputMode;
+				_target = target;
+				_environment = self;
+			})
+		}, ProxyReflection))
+
+		-- Map the proxy to the target
+		self._toTarget[proxy] = target
+	end
+
+	-- Map the target to the proxy
+	self._toProxy[target] = proxy
 
 	-- Grab the associated sandbox, if any
 	local sandbox = self:GetSandbox()
@@ -279,10 +315,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 			sandbox:Claim(target)
 		end
 	end
-
-	-- Map the target to the proxy and the proxy to the target
-	self._toProxy[target] = proxy
-	self._toTarget[proxy] = target
 
 	-- Map proxy/target to themselves in correct context
 	self._toProxy[proxy] = proxy

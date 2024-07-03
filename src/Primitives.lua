@@ -5,6 +5,7 @@ local PRIMITIVE_TYPES = table.freeze({
 	["boolean"] = true;
 	["nil"] = true;
 	["vector"] = true;
+	["buffer"] = true;
 })
 
 local Primitives = {}

@@ -57,8 +57,8 @@ local function addProxy(environment)
 	local toProxyOld = environment._toProxy
 	local toTargetOld = environment._toTarget
 
-	environment._toProxy = setmetatable({}, {__mode="k"; __metatable="The metatable is locked."})
-	environment._toTarget = setmetatable({}, {__mode="v"; __metatable="The metatable is locked."})
+	environment._toProxy = setmetatable({}, {__mode="v"; __metatable="The metatable is locked."})
+	environment._toTarget = setmetatable({}, {__mode="k"; __metatable="The metatable is locked."})
 
 	-- For all previously proxied values, re-wrap them
 	if toProxyOld then
@@ -259,6 +259,9 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 	if self._toProxy[target] then
 		return self._toProxy[target]
 	end
+	if not rawequal(self._toTarget[target], nil) then
+		return target
+	end
 
 	-- If the target is a function, use forBultin if its a CFunction
 	if not inputMode and type(target) == "function" then
@@ -282,13 +285,8 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 			return proxyFunction(self, inputMode, target, ...)
 		end
 
-		-- Do not allow the function to be unwrapped
-		self._toTarget[proxy] = proxy
-
 		-- Map the target to the proxy
 		self._toProxy[target] = proxy
-		self._toProxy[proxy] = proxy
-		self._toTarget[target] = target
 	elseif type(target) == "table" and not table.isfrozen(target) and rawequal(getmetatable(target :: any), nil) then
 		-- Convert mutable tables into proxies themselves
 		-- This way, any references to the table before it was sandboxed are preserved
@@ -300,8 +298,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		target = {}
 		self._toTarget[proxy] = target
 		self._toProxy[target] = proxy
-		self._toProxy[proxy] = proxy
-		self._toTarget[target] = target
 
 		-- Copy the values of the target into the new one
 		for key, value in pairs(proxy) do
@@ -333,8 +329,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		-- Map the proxy and target to each other
 		self._toTarget[proxy] = target
 		self._toProxy[target] = proxy
-		self._toProxy[proxy] = proxy
-		self._toTarget[target] = target
 	end
 
 	-- Grab the associated sandbox, if any
@@ -360,7 +354,11 @@ function Environment:unwrap(target: proxyable)
 	if Primitives.isPrimitive(target) or type(target) == "thread" then
 		return target
 	end
-	return self._toTarget[target] or target
+	local unwrapped = self._toTarget[target]
+	if not rawequal(unwrapped, nil) then
+		return unwrapped
+	end
+	return target
 end
 
 function Environment:withFenv<K, V>(globals: {[K]: V})

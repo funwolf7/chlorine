@@ -284,6 +284,42 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 
 		-- Do not allow the function to be unwrapped
 		self._toTarget[proxy] = proxy
+
+		-- Map the target to the proxy
+		self._toProxy[target] = proxy
+		self._toProxy[proxy] = proxy
+		self._toTarget[target] = target
+	elseif type(target) == "table" and not table.isfrozen(target) and rawequal(getmetatable(target :: any), nil) then
+		-- Convert mutable tables into proxies themselves
+		-- This way, any references to the table before it was sandboxed are preserved
+		-- Tables that are already frozen or have a metatable must have been created externally
+
+		-- Map the proxy and newly created target to each other
+		-- This must be done now, as if the table is recursive then this will resolve any cycles
+		proxy = target
+		target = {}
+		self._toTarget[proxy] = target
+		self._toProxy[target] = proxy
+		self._toProxy[proxy] = proxy
+		self._toTarget[target] = target
+
+		-- Copy the values of the target into the new one
+		for key, value in pairs(proxy) do
+			-- Wrap and unwrap the keys to ensure any function or table transformations occur
+			target[self:unwrap(self:wrap(key))] = self:unwrap(self:wrap(value))
+
+			-- Remove it from the old target
+			proxy[key] = nil
+		end
+
+		-- Transform the old target into a proxy
+		proxy[PROXY_DATA] = table.freeze({
+			_inputMode = inputMode;
+			_target = target;
+			_environment = self;
+		})
+		setmetatable(proxy, ProxyReflection)
+		table.freeze(proxy)
 	else
 		-- Regular proxy for objects
 		proxy = table.freeze(setmetatable({
@@ -294,12 +330,12 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 			})
 		}, ProxyReflection))
 
-		-- Map the proxy to the target
+		-- Map the proxy and target to each other
 		self._toTarget[proxy] = target
+		self._toProxy[target] = proxy
+		self._toProxy[proxy] = proxy
+		self._toTarget[target] = target
 	end
-
-	-- Map the target to the proxy
-	self._toProxy[target] = proxy
 
 	-- Grab the associated sandbox, if any
 	local sandbox = self:GetSandbox()
@@ -315,10 +351,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 			sandbox:Claim(target)
 		end
 	end
-
-	-- Map proxy/target to themselves in correct context
-	self._toProxy[proxy] = proxy
-	self._toTarget[target] = target
 
 	return proxy
 end

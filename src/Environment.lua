@@ -120,6 +120,98 @@ end
 
 export type proxyable = {[any]: any} | (...any) -> ...any
 
+local ErrorMetatable = table.freeze({
+	__tostring = function(self)
+		return tostring(self.Value) .. "\n" .. self.Traceback
+	end,
+})
+
+local function isError(item: any)
+	return type(item) == "table" and rawequal(getmetatable(item), ErrorMetatable)
+end
+
+local MetamethodProxies = {}
+for _, method in Reflection do
+	MetamethodProxies[method] = true
+end
+
+local callFunctionTransformed
+local proxyMetamethod
+local proxyFunction
+local function createErrorObject(value: any, prependInfo: boolean)
+	local errorObject = setmetatable({
+		Value = value,
+	}, ErrorMetatable)
+
+	-- A C function followed by a callFunctionTransformed indicates this was an error from a callFunctionTransformed
+	local currentLevel = 2
+	if debug.info(3, "s") == "[C]" and rawequal(debug.info(4, "f"), callFunctionTransformed) then
+		currentLevel = 4
+	end
+
+	local traceback = {"Stack Begin"}
+	-- Go over every level to create a traceback
+	while true do
+		currentLevel += 1
+
+		-- Get the info for the current level
+		local identifier, line, name, func = debug.info(currentLevel, "slnf")
+
+		-- If the function doesn't exist then the end has been reached
+		if func == nil then
+			break
+		end
+
+		-- Ignore proxy functions
+		if func == callFunctionTransformed then
+			continue
+		end
+		if func == proxyMetamethod then
+			currentLevel += 1
+			continue
+		end
+		if func == proxyFunction then
+			currentLevel += 1
+			continue
+		end
+		if MetamethodProxies[func] then
+			continue
+		end
+
+		-- Ignore any C functions in the traceback
+		if identifier == "[C]" then
+			continue
+		end
+
+		-- Prepend script and line info if needed
+		if prependInfo then
+			prependInfo = false
+			if type(value) == "string" then
+				errorObject.Value = string.format("%s:%d: %s", tostring(identifier), tonumber(line) or 0, value)
+			end
+		end
+
+		-- Insert the formatted line
+		-- A script's main thread has an empty string for a name
+		if name and name ~= "" then
+			table.insert(
+				traceback,
+				string.format("Script '%s', Line %d - function %s", tostring(identifier), tonumber(line) or 0, tostring(name))
+			)
+		else
+			table.insert(
+				traceback,
+				string.format("Script '%s', Line %d", tostring(identifier), tonumber(line) or 0)
+			)
+		end
+	end
+
+	-- Apply the traceback string
+	table.insert(traceback, "Stack End\n\nNOTE: The below traceback may be incorrect. See above for an accurate stack trace.")
+	errorObject.Traceback = table.concat(traceback, "\n")
+	return errorObject
+end
+
 -- Wraps all values in the list into proxies
 local function wrapList(environment: Environment, list: {n: number, [number]: any}, inputMode: ("forLua" | "forBuiltin")?)
 	list.n = list.n or #list
@@ -136,7 +228,7 @@ local function unwrapList(environment: Environment, list: {n: number, [number]: 
 end
 
 -- Calls a function and transforms its inputs as specified by inputMode, and its outputs into proxies
-local function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> (...any), ...: any)
+function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> (...any), ...: any)
 	-- Pack arguments
 	local args = table.pack(...)
 
@@ -164,7 +256,29 @@ local function callFunctionTransformed(self: Environment, inputMode: "forLua" | 
 	end
 
 	-- Call the target and collect all results
-	local results = table.pack(xpcall(target, debug.traceback, table.unpack(args, 1, args.n)))
+	local results = table.pack(xpcall(target, function(err: any)
+		-- Pass error objects through
+		if isError(err) then
+			return err
+		end
+
+		-- Add line info to string error messages
+		local prependInfo = false
+		if type(err) == "string" then
+			prependInfo = true
+
+			-- Attempt to remove existing line info from builtins
+			if inputMode == "forBuiltin" then
+				local _, match = string.find(err, ":%d+: ")
+				if match then
+					err = string.sub(err, match + 1)
+				end
+			end
+		end
+
+		-- Create a new error object
+		return createErrorObject(err, prependInfo)
+	end, table.unpack(args, 1, args.n)))
 
 	-- CPU timer (post-call)
 	if sandbox then
@@ -178,7 +292,9 @@ local function callFunctionTransformed(self: Environment, inputMode: "forLua" | 
 
 	-- If the call failed, bubble the error
 	local success, result = table.unpack(results, 1, 2)
-	assert(success, result)
+	if not success then
+		error(result)
+	end
 
 	-- Convert all outputs to wrapped values
 	wrapList(self, results)
@@ -188,7 +304,7 @@ local function callFunctionTransformed(self: Environment, inputMode: "forLua" | 
 end
 
 -- Calls a metamethod by name for the given proxy and arguments
-local function proxyMetamethod(proxy: any, ...: any)
+function proxyMetamethod(proxy: any, ...: any)
 	-- Grab the name of the current metamethod (Name of the caller)
 	local metamethod = debug.info(2, "n")
 
@@ -226,7 +342,7 @@ end
 local ProxyReflection = Reflection:wrap(proxyMetamethod)
 
 -- Calls a function for the given environment, inputMode, and arguments
-local function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> ...any, ...: any)
+function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> ...any, ...: any)
 	-- Look for a sandbox
 	local sandbox = environment:GetSandbox()
 	if sandbox then
@@ -244,6 +360,11 @@ end
 
 -- Creates a proxy targeting a particular value
 function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin")?): proxyable
+	-- Errors must be replaced before being used
+	if isError(target) then
+		target = (target :: any).Value
+	end
+
 	-- Test env rules
 	local ruleResult = self:test(target)
 	if ruleResult then
@@ -350,6 +471,11 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 end
 
 function Environment:unwrap(target: proxyable)
+	-- Errors must be replaced before being used
+	if isError(target) then
+		target = (target :: any).Value
+	end
+
 	-- Check if the target is a primitive
 	if Primitives.isPrimitive(target) or type(target) == "thread" then
 		return target

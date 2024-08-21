@@ -100,6 +100,7 @@ function Environment.new()
 	local self = setmetatable({}, Environment)
 	self._rules = Rules.new()
 	self._env = {}
+	self.store = {}
 	return table.freeze(addProxy(self))
 end
 

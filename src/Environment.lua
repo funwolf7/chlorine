@@ -86,6 +86,8 @@ local function addProxy(environment)
 		end
 	end
 
+	environment._protectedThreads = setmetatable({}, {__mode="kv"; __metatable="The metatable is locked."})
+
 	return environment
 end
 
@@ -124,6 +126,9 @@ export type proxyable = {[any]: any} | (...any) -> ...any
 
 local ErrorMetatable = table.freeze({
 	__tostring = function(self)
+		if rawequal(self.Value, nil) then
+			return "Error occurred, no output from Lua.\n" .. self.Traceback
+		end
 		return tostring(self.Value) .. "\n" .. self.Traceback
 	end,
 })
@@ -257,6 +262,10 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 		end
 	end
 
+	local isUnsafe = self._protectedThreads[thread] == nil
+	if isUnsafe then
+		self._protectedThreads[thread] = true
+	end
 	-- Call the target and collect all results
 	local results = table.pack(xpcall(target, function(err: any)
 		-- Pass error objects through
@@ -281,6 +290,9 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 		-- Create a new error object
 		return createErrorObject(err, prependInfo)
 	end, table.unpack(args, 1, args.n)))
+	if isUnsafe then
+		self._protectedThreads[thread] = nil
+	end
 
 	-- CPU timer (post-call)
 	if sandbox then
@@ -295,7 +307,13 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 	-- If the call failed, bubble the error
 	local success, result = table.unpack(results, 1, 2)
 	if not success then
-		error(result)
+		-- Convert it to a string if the thread is unsafe
+		-- The ingame console does not properly handle tables with __tostring
+		if isUnsafe then
+			error(tostring(result), -1)
+		else
+			error(result, -1)
+		end
 	end
 
 	-- Convert all outputs to wrapped values

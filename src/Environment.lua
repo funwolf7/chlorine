@@ -94,6 +94,7 @@ local function _clone(environment: Environment, copyOwner: boolean?)
 	if copyOwner == false then
 		copy._sandbox = nil
 	end
+	copy.store = {}
 	return addProxy(copy)
 end
 function Environment.new()

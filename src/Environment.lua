@@ -96,14 +96,12 @@ local function _clone(environment: Environment, copyOwner: boolean?)
 	if copyOwner == false then
 		copy._sandbox = nil
 	end
-	copy.store = {}
 	return addProxy(copy)
 end
 function Environment.new()
 	local self = setmetatable({}, Environment)
 	self._rules = Rules.new()
 	self._env = {}
-	self.store = {}
 	return table.freeze(addProxy(self))
 end
 
@@ -404,6 +402,11 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		return target
 	end
 
+	-- Replace the inputMode
+	if self._inputMode then
+		inputMode = self._inputMode(target) or inputMode
+	end
+
 	-- If the target is a function, use forBultin if its a CFunction
 	if not inputMode and type(target) == "function" then
 		inputMode = if debug.info(target, "s") == "[C]" then "forBuiltin" else inputMode
@@ -428,7 +431,12 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 
 		-- Map the target to the proxy
 		self._toProxy[target] = proxy
-	elseif type(target) == "table" and not table.isfrozen(target) and rawequal(getmetatable(target :: any), nil) then
+	elseif
+		inputMode ~= "forBuiltin"
+		and type(target) == "table"
+		and not table.isfrozen(target)
+		and rawequal(getmetatable(target :: any), nil)
+	then
 		-- Convert mutable tables into proxies themselves
 		-- This way, any references to the table before it was sandboxed are preserved
 		-- Tables that are already frozen or have a metatable must have been created externally
@@ -522,6 +530,12 @@ end
 function Environment:withoutRules(...: SandboxRule)
 	local newEnvironment = _clone(self)
 	newEnvironment._rules = newEnvironment._rules:without(...)
+	return table.freeze(newEnvironment)
+end
+
+function Environment:withInputMode(inputMode: (unknown) -> ("forLua" | "forBuiltin", boolean))
+	local newEnvironment = _clone(self)
+	newEnvironment._inputMode = inputMode
 	return table.freeze(newEnvironment)
 end
 

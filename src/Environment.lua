@@ -329,10 +329,6 @@ function proxyMetamethod(proxy: any, ...: any)
 	-- Ensure that the object being acted on is a proxy and grab the proxy data from it
 	local data = assert(rawget(proxy, PROXY_DATA), string.format("Invalid proxy invoked metamethod proxy.%s (%s)", metamethod, type(proxy)))
 
-	-- Determine the input mode to use for the call
-	-- When using __call, we want to use the proxy's input mode
-	local inputMode = if metamethod == "__call" then data._inputMode else "forBuiltin"
-
 	-- Grab the proxy's associated environment and target
 	local environment = data._environment
 	local target = data._target
@@ -349,11 +345,11 @@ function proxyMetamethod(proxy: any, ...: any)
 
 	-- If the metamethod is __call, don't use Reflection or there'll be infinite recursion in forLua mode due to argument wrapping
 	if metamethod == "__call" then
-		return callFunctionTransformed(environment, inputMode, target, ...)
+		return callFunctionTransformed(environment, data._inputMode, target, ...)
 	end
 
 	-- Call the metamethod
-	return callFunctionTransformed(environment, inputMode, Reflection[metamethod], target, ...)
+	return callFunctionTransformed(environment, data._inputMode, Reflection[metamethod], target, ...)
 end
 
 -- Create reflection for proxies

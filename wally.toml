@@ -1,7 +1,7 @@
 [package]
 name = "funwolf7/chlorine"
 description = "Fixes some bugs with Chlorine. Not really intended to be used by others, but go ahead I guess. "
-version = "0.0.7"
+version = "0.0.8"
 license = "MIT"
 authors = ["Hexcede", "funwolf7"]
 registry = "https://github.com/UpliftGames/wally-index"

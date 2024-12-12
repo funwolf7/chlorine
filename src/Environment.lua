@@ -200,11 +200,9 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 			prependInfo = true
 
 			-- Attempt to remove existing line info from builtins
-			if inputMode == "forBuiltin" then
-				local _, match = string.find(err, ":%d+: ")
-				if match then
-					err = string.sub(err, match + 1)
-				end
+			local _, match = string.find(err, ":%d+: ")
+			if match then
+				err = string.sub(err, match + 1)
 			end
 		end
 

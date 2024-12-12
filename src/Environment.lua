@@ -114,7 +114,6 @@ for _, method in Reflection do
 end
 
 local callFunctionTransformed
-local proxyMetamethod
 local proxyFunction
 local function createErrorObject(value: any, prependInfo: boolean)
 	local errorObject = setmetatable({
@@ -142,10 +141,6 @@ local function createErrorObject(value: any, prependInfo: boolean)
 
 		-- Ignore proxy functions
 		if func == callFunctionTransformed then
-			continue
-		end
-		if func == proxyMetamethod then
-			currentLevel += 1
 			continue
 		end
 		if func == proxyFunction then
@@ -273,37 +268,8 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 	return table.unpack(results, 2, results.n)
 end
 
--- Calls a metamethod by name for the given proxy and arguments
-function proxyMetamethod(proxy: any, ...: any)
-	-- Grab the name of the current metamethod (Name of the caller)
-	local metamethod = debug.info(2, "n")
-
-	-- Ensure that the object being acted on is a proxy and grab the proxy data from it
-	local data = assert(rawget(proxy, PROXY_DATA), string.format("Invalid proxy invoked metamethod proxy.%s (%s)", metamethod, type(proxy)))
-
-	-- Determine the input mode to use for the call
-	-- When using __call, we want to use the proxy's input mode
-	-- Any other metamethod needs to be builtin to allow the metamethod function to act on the unwrapped object
-	local inputMode = if metamethod == "__call" then data._inputMode else "forBuiltin"
-
-	-- Grab the proxy's associated environment and target
-	local environment = data._environment
-	local target = data._target
-
-	-- Ensure that the environment and target exist
-	assert(environment and target, "The object isn't a valid Proxy.")
-
-	-- If the metamethod is __call, don't use Reflection or there'll be infinite recursion in forLua mode due to argument wrapping
-	if metamethod == "__call" then
-		return callFunctionTransformed(environment, inputMode, target, ...)
-	end
-
-	-- Call the metamethod
-	return callFunctionTransformed(environment, inputMode, Reflection[metamethod], target, ...)
-end
-
 -- Create reflection for proxies
-local ProxyReflection = Reflection:wrap(proxyMetamethod)
+local ProxyReflection = Reflection:wrap(PROXY_DATA, callFunctionTransformed)
 
 -- Calls a function for the given environment, inputMode, and arguments
 function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> ...any, ...: any)

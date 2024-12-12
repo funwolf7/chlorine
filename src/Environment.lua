@@ -1,4 +1,3 @@
-local Primitives = require(script.Parent.Primitives)
 local Reflection = require(script.Parent.Reflection)
 local Rules = require(script.Parent.Rules)
 
@@ -14,6 +13,16 @@ export type BlockRule = Rule & { Rule: "Block"; }
 export type TerminateRule = Rule & { Rule: "Terminate"; }
 export type ReplaceRule = Rule & { Rule: "Replace"; Replacement: any?; }
 export type SandboxRule = CustomRule | AllowRule | BlockRule | TerminateRule | ReplaceRule
+
+local PRIMITIVE_TYPES = table.freeze({
+	["number"] = true;
+	["string"] = true;
+	["boolean"] = true;
+	["nil"] = true;
+	["vector"] = true;
+	["buffer"] = true;
+	["thread"] = true;
+})
 
 -- Proxy data symbol
 local PROXY_DATA = newproxy(false)
@@ -288,15 +297,15 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		target = (target :: any).Value
 	end
 
-	-- Test env rules
-	local ruleResult = self:test(target)
-	if ruleResult then
-		target = ruleResult.value
+	-- Check if the target is a primitive
+	if PRIMITIVE_TYPES[type(target)] then
+		return target
 	end
 
-	-- Check if the target is a primitive
-	if Primitives.isPrimitive(target) or type(target) == "thread" then
-		return target
+	-- Test env rules
+	local ruleResult = self:_test(target)
+	if ruleResult then
+		target = ruleResult.value
 	end
 
 	-- Check if the target is already proxied
@@ -395,7 +404,7 @@ function Environment:unwrap(target: proxyable)
 	end
 
 	-- Check if the target is a primitive
-	if Primitives.isPrimitive(target) or type(target) == "thread" then
+	if PRIMITIVE_TYPES[type(target)] then
 		return target
 	end
 	local unwrapped = self._toTarget[target]
@@ -447,12 +456,7 @@ function Environment:_applyMatch(result: RuleResult): RuleResult
 	return result
 end
 
-function Environment:test(value: any, sortComparator: Rules.RuleComparator?): RuleResult?
-	-- Allow all primitives and threads to always pass
-	if Primitives.isPrimitive(value) or type(value) == "thread" then
-		return
-	end
-
+function Environment:_test(value: any, sortComparator: Rules.RuleComparator?): RuleResult?
 	-- Test all rules on the value
 	local ruleResult = self._rules:test(value, sortComparator)
 

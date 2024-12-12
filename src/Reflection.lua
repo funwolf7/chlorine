@@ -87,109 +87,109 @@ function Reflection:wrap(PROXY_DATA: any, callFunctionTransformed: (...any) -> .
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __index, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __index, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__newindex(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __newindex, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __newindex, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__call(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, data._inputMode, data._target, ...)
+		return callFunctionTransformed(data._environment, data._inputMode, data._target, table.pack(...))
 	end
 	function ProxyReflection.__concat(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __concat, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __concat, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__unm(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __unm, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __unm, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__add(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __add, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __add, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__sub(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __sub, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __sub, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__mul(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __mul, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __mul, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__div(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __div, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __div, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__idiv(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __idiv, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __idiv, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__mod(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __mod, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __mod, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__pow(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __pow, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __pow, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__tostring(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __tostring, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __tostring, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__eq(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __eq, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __eq, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__lt(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __lt, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __lt, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__le(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __le, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __le, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__len(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __len, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __len, table.pack(data._target, ...))
 	end
 	function ProxyReflection.__iter(proxy, ...)
 		-- Grab the data from the proxy
 		local data = rawget(proxy, PROXY_DATA)
 		-- Call the metamethod
-		return callFunctionTransformed(data._environment, "forBuiltin", __iter, data._target, ...)
+		return callFunctionTransformed(data._environment, "forBuiltin", __iter, table.pack(data._target, ...))
 	end
 	return table.freeze(ProxyReflection)
 end

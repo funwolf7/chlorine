@@ -139,40 +139,43 @@ end
 
 -- Wraps all values in the list into proxies
 local function wrapList(environment: Environment, list: {n: number, [number]: any}, inputMode: ("forLua" | "forBuiltin")?)
-	list.n = list.n or #list
 	for i=1, list.n do
 		list[i] = environment:wrap(list[i], inputMode)
 	end
 end
 -- Unwraps all values in the list into their proxy targets
 local function unwrapList(environment: Environment, list: {n: number, [number]: any})
-	list.n = list.n or #list
 	for i=1, list.n do
 		list[i] = environment:unwrap(list[i])
 	end
 end
 
 -- Calls a function and transforms its inputs as specified by inputMode, and its outputs into proxies
-function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> (...any), ...: any)
-	-- Pack arguments
-	local args = table.pack(...)
-
+function callFunctionTransformed(
+	self: Environment,
+	inputMode: "forLua" | "forBuiltin",
+	target: (...any) -> (...any),
+	args: {n: number, [number]: any}
+)
 	-- Get current thread
 	local thread = coroutine.running()
 
 	-- Convert all input arguments either to their wrapped values, or their targets depending on the input mode
 	if inputMode == "forLua" then
-		wrapList(self, args, inputMode)
+		wrapList(self, args)
 	elseif inputMode == "forBuiltin" then
 		unwrapList(self, args)
 	else
 		error(string.format("Invalid inputMode %s", inputMode), 2)
 	end
 
-	local isUnsafe = self._protectedThreads[thread] == nil
+	-- Mark this thread as protected if it isn't
+	local protectedThreads = self._protectedThreads
+	local isUnsafe = protectedThreads[thread] == nil
 	if isUnsafe then
-		self._protectedThreads[thread] = ""
+		protectedThreads[thread] = ""
 	end
+
 	-- Call the target and collect all results
 	local results = table.pack(xpcall(target, function(err: any)
 		-- A C function followed by a callFunctionTransformed indicates this was an error from a callFunctionTransformed
@@ -195,24 +198,28 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 
 		-- Create a new error object
 		local traceback, value = getErrorTraceback(err, prependInfo)
-		self._protectedThreads[thread] = traceback
+		protectedThreads[thread] = traceback
 		return value
 	end, table.unpack(args, 1, args.n)))
-	local errorMessage = self._protectedThreads[thread]
-	if isUnsafe then
-		self._protectedThreads[thread] = nil
-	end
 
 	-- If the call failed, bubble the error
 	local success, result = table.unpack(results, 1, 2)
 	if not success then
-		-- Convert it to a string if the thread is unsafe
-		-- The ingame console does not properly handle tables with __tostring
+		local message = protectedThreads[thread]
+
+		-- Bubble the result down if the thread was protected
+		-- Otherwise, mark this thread as no longer safe and give a traceback error
 		if isUnsafe then
-			error(errorMessage, -1)
+			protectedThreads[thread] = nil
+			error(message, -1)
 		else
 			error(result, -1)
 		end
+	end
+
+	-- Mark this thread as unprotected if this function call marked it as protected
+	if isUnsafe then
+		protectedThreads[thread] = nil
 	end
 
 	-- Convert all outputs to wrapped values
@@ -232,7 +239,7 @@ function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuilt
 	wrapList(environment, args)
 
 	-- Call the function
-	return callFunctionTransformed(environment, inputMode, target, table.unpack(args, 1, args.n))
+	return callFunctionTransformed(environment, inputMode, target, args)
 end
 
 -- Creates a proxy targeting a particular value

@@ -276,9 +276,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		inputMode = "forLua"
 	end
 
-	-- Check that the input mode for functions is valid
-	assert(inputMode == "forLua" or inputMode == "forBuiltin", string.format("Invalid input mode for wrapping: %s", tostring(inputMode)))
-
 	-- Create and freeze proxy
 	local proxy
 	if type(target) == "function" then

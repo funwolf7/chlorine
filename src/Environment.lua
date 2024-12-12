@@ -109,7 +109,7 @@ local function isError(item: any)
 end
 
 local MetamethodProxies = {}
-for _, method in Reflection do
+for _, method in Reflection.Methods do
 	MetamethodProxies[method] = true
 end
 

@@ -61,6 +61,26 @@ local function __iter(self)
 	end), self
 end
 
+Reflection.Methods = {
+	__index,
+	__newindex,
+	__concat,
+	__unm,
+	__add,
+	__sub,
+	__mul,
+	__div,
+	__idiv,
+	__mod,
+	__pow,
+	__tostring,
+	__eq,
+	__lt,
+	__le,
+	__len,
+	__iter,
+}
+
 function Reflection:wrap(PROXY_DATA: any, callFunctionTransformed: (...any) -> ...any)
 	local ProxyReflection = {}
 	function ProxyReflection.__index(proxy, ...)

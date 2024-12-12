@@ -61,19 +61,6 @@ end
 
 export type proxyable = {[any]: any} | (...any) -> ...any
 
-local ErrorMetatable = table.freeze({
-	__tostring = function(self)
-		if rawequal(self.Value, nil) then
-			return "Error occurred, no output from Lua.\n" .. self.Traceback
-		end
-		return tostring(self.Value) .. "\n" .. self.Traceback
-	end,
-})
-
-local function isError(item: any)
-	return type(item) == "table" and rawequal(getmetatable(item), ErrorMetatable)
-end
-
 local MetamethodProxies = {}
 for _, method in Reflection.Methods do
 	MetamethodProxies[method] = true
@@ -81,18 +68,17 @@ end
 
 local callFunctionTransformed
 local proxyFunction
-local function createErrorObject(value: any, prependInfo: boolean)
-	local errorObject = setmetatable({
-		Value = value,
-	}, ErrorMetatable)
-
+local function getErrorTraceback(value: any, prependInfo: boolean)
 	-- A C function followed by a callFunctionTransformed indicates this was an error from a callFunctionTransformed
 	local currentLevel = 2
 	if debug.info(3, "s") == "[C]" and rawequal(debug.info(4, "f"), callFunctionTransformed) then
 		currentLevel = 4
 	end
 
-	local traceback = {"Stack Begin"}
+	local traceback = {
+		"",
+		"Stack Begin",
+	}
 	-- Go over every level to create a traceback
 	while true do
 		currentLevel += 1
@@ -126,7 +112,7 @@ local function createErrorObject(value: any, prependInfo: boolean)
 		if prependInfo then
 			prependInfo = false
 			if type(value) == "string" then
-				errorObject.Value = string.format("%s:%d: %s", tostring(identifier), tonumber(line) or 0, value)
+				value = string.format("%s:%d: %s", tostring(identifier), tonumber(line) or 0, value)
 			end
 		end
 
@@ -145,10 +131,10 @@ local function createErrorObject(value: any, prependInfo: boolean)
 		end
 	end
 
+	traceback[1] = if rawequal(value, nil) then "Error occurred, no output from Lua." else tostring(value)
 	-- Apply the traceback string
 	table.insert(traceback, "Stack End\n\nNOTE: The below traceback may be incorrect. See above for an accurate stack trace.")
-	errorObject.Traceback = table.concat(traceback, "\n")
-	return errorObject
+	return table.concat(traceback, "\n"), value
 end
 
 -- Wraps all values in the list into proxies
@@ -185,12 +171,13 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 
 	local isUnsafe = self._protectedThreads[thread] == nil
 	if isUnsafe then
-		self._protectedThreads[thread] = true
+		self._protectedThreads[thread] = ""
 	end
 	-- Call the target and collect all results
 	local results = table.pack(xpcall(target, function(err: any)
-		-- Pass error objects through
-		if isError(err) then
+		-- A C function followed by a callFunctionTransformed indicates this was an error from a callFunctionTransformed
+		if debug.info(2, "s") == "[C]" and rawequal(debug.info(3, "f"), callFunctionTransformed) then
+			-- Pass the error through, the traceback has already been handled
 			return err
 		end
 
@@ -207,8 +194,11 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 		end
 
 		-- Create a new error object
-		return createErrorObject(err, prependInfo)
+		local traceback, value = getErrorTraceback(err, prependInfo)
+		self._protectedThreads[thread] = traceback
+		return value
 	end, table.unpack(args, 1, args.n)))
+	local errorMessage = self._protectedThreads[thread]
 	if isUnsafe then
 		self._protectedThreads[thread] = nil
 	end
@@ -219,7 +209,7 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 		-- Convert it to a string if the thread is unsafe
 		-- The ingame console does not properly handle tables with __tostring
 		if isUnsafe then
-			error(tostring(result), -1)
+			error(errorMessage, -1)
 		else
 			error(result, -1)
 		end
@@ -250,16 +240,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 	-- Check if the target is a primitive
 	if PRIMITIVE_TYPES[type(target)] then
 		return target
-	end
-
-	-- Errors must be replaced before being used
-	if isError(target) then
-		target = (target :: any).Value
-
-		-- Check again if the target is a primitive
-		if PRIMITIVE_TYPES[type(target)] then
-			return target
-		end
 	end
 
 	-- Check if the target is already proxied
@@ -361,15 +341,6 @@ function Environment:unwrap(target: proxyable)
 		return target
 	end
 
-	-- Errors must be replaced before being used
-	if isError(target) then
-		target = (target :: any).Value
-
-		-- Check again if the target is a primitive
-		if PRIMITIVE_TYPES[type(target)] then
-			return target
-		end
-	end
 	local unwrapped = self._toTarget[target]
 	if not rawequal(unwrapped, nil) then
 		return unwrapped

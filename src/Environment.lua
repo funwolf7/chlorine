@@ -257,6 +257,11 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 	-- Errors must be replaced before being used
 	if isError(target) then
 		target = (target :: any).Value
+
+		-- Check again if the target is a primitive
+		if PRIMITIVE_TYPES[type(target)] then
+			return target
+		end
 	end
 
 	-- Check if the target is already proxied
@@ -353,14 +358,19 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 end
 
 function Environment:unwrap(target: proxyable)
-	-- Errors must be replaced before being used
-	if isError(target) then
-		target = (target :: any).Value
-	end
-
 	-- Check if the target is a primitive
 	if PRIMITIVE_TYPES[type(target)] then
 		return target
+	end
+
+	-- Errors must be replaced before being used
+	if isError(target) then
+		target = (target :: any).Value
+
+		-- Check again if the target is a primitive
+		if PRIMITIVE_TYPES[type(target)] then
+			return target
+		end
 	end
 	local unwrapped = self._toTarget[target]
 	if not rawequal(unwrapped, nil) then

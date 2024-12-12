@@ -46,38 +46,8 @@ Environment.rules = table.freeze({
 });
 
 local function addProxy(environment)
-	local toProxyOld = environment._toProxy
-	local toTargetOld = environment._toTarget
-
 	environment._toProxy = setmetatable({}, {__mode="v"; __metatable="The metatable is locked."})
 	environment._toTarget = setmetatable({}, {__mode="k"; __metatable="The metatable is locked."})
-
-	-- For all previously proxied values, re-wrap them
-	if toProxyOld then
-		for target, proxy in toProxyOld do
-			-- If the proxy is the key, continue
-			if rawequal(target, proxy) then
-				continue
-			end
-
-			-- Grab the proxy data
-			local data = assert(rawget(proxy, PROXY_DATA), "Invalid proxy object.")
-
-			-- Re-proxy the target
-			environment:wrap(data._target, data._inputMode)
-		end
-	end
-
-	if toTargetOld then
-		-- If there exists a wrapped environment for the sandbox
-		local env = environment._env
-		local target = env and toTargetOld[env]
-		if target then
-			-- Replace the wrapped environment
-			environment._env = environment:wrap(target)
-		end
-	end
-
 	environment._protectedThreads = setmetatable({}, {__mode="kv"; __metatable="The metatable is locked."})
 
 	return environment
@@ -85,6 +55,12 @@ end
 
 local function _clone(environment: Environment)
 	local copy = table.clone(environment)
+	assert(
+		(not environment._toProxy or next(environment._toProxy) == nil)
+		and (not environment._toTarget or next(environment._toProxy) == nil)
+		and (next(environment._env) == nil),
+		"Cannot clone a non-empty Environment"
+	)
 	return addProxy(copy)
 end
 function Environment.new()

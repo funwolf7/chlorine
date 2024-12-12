@@ -1,15 +1,7 @@
 local Primitives = require(script.Parent.Primitives)
 local Reflection = require(script.Parent.Reflection)
-local Sandbox = require(script.Parent.Sandbox)
 local Rules = require(script.Parent.Rules)
 
-local Caller = require(script.Parent.Caller)
-function Caller.Environment.isCaller(level: number)
-	return debug.info(1, "s") == debug.info(level + 1, "s")
-end
-table.freeze(Caller.Environment)
-
-type Sandbox = Sandbox.Sandbox
 type Rules = Rules.Rules
 type Rule = Rules.Rule
 type RuleResult = Rules.RuleResult
@@ -35,10 +27,6 @@ Environment.rules = table.freeze({
 		return result:withValue(nil)
 	end;
 	Terminate = function(environment: Environment, result: RuleResult)
-		local sandbox = environment:GetSandbox()
-		if sandbox then
-			sandbox:Terminate("Terminate by rule.")
-		end
 		error("Terminate by rule.")
 		return result:withValue(nil)
 	end;
@@ -49,11 +37,6 @@ Environment.rules = table.freeze({
 });
 
 local function addProxy(environment)
-	local sandbox = environment:GetSandbox()
-	if sandbox then
-		sandbox:Claim(environment)
-	end
-
 	local toProxyOld = environment._toProxy
 	local toTargetOld = environment._toTarget
 
@@ -91,11 +74,8 @@ local function addProxy(environment)
 	return environment
 end
 
-local function _clone(environment: Environment, copyOwner: boolean?)
+local function _clone(environment: Environment)
 	local copy = table.clone(environment)
-	if copyOwner == false then
-		copy._sandbox = nil
-	end
 	return addProxy(copy)
 end
 function Environment.new()
@@ -105,15 +85,8 @@ function Environment.new()
 	return table.freeze(addProxy(self))
 end
 
-function Environment:clone(copyOwner: boolean?)
-	return table.freeze(_clone(self, copyOwner))
-end
-
-function Environment:boundTo(sandbox: Sandbox)
-	local newEnvironment = _clone(self, false)
-	newEnvironment._sandbox = sandbox
-	sandbox:Claim(newEnvironment)
-	return table.freeze(newEnvironment)
+function Environment:clone()
+	return table.freeze(_clone(self))
 end
 
 function Environment:applyTo(functionToBind: (...any) -> ...any): (...any) -> ...any
@@ -237,8 +210,7 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 	-- Pack arguments
 	local args = table.pack(...)
 
-	-- Look for a sandbox
-	local sandbox = self:GetSandbox()
+	-- Get current thread
 	local thread = coroutine.running()
 
 	-- Convert all input arguments either to their wrapped values, or their targets depending on the input mode
@@ -248,16 +220,6 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 		unwrapList(self, args)
 	else
 		error(string.format("Invalid inputMode %s", inputMode), 2)
-	end
-
-	-- CPU timer (pre-call)
-	if sandbox then
-		-- Start the CPU timer for this thread if entering lua code or unyieldable code, otherwise, stop the timer
-		if inputMode == "forLua" or not coroutine.isyieldable() then
-			sandbox:StartTimer(thread)
-		else
-			sandbox:StopTimer(thread)
-		end
 	end
 
 	local isUnsafe = self._protectedThreads[thread] == nil
@@ -290,16 +252,6 @@ function callFunctionTransformed(self: Environment, inputMode: "forLua" | "forBu
 	end, table.unpack(args, 1, args.n)))
 	if isUnsafe then
 		self._protectedThreads[thread] = nil
-	end
-
-	-- CPU timer (post-call)
-	if sandbox then
-		-- Stop the CPU timer for this thread if exiting lua code, otherwise, start the timer again, we're re-entering sandboxed code
-		if inputMode == "forLua" then
-			sandbox:StopTimer(thread)
-		else
-			sandbox:StartTimer(thread)
-		end
 	end
 
 	-- If the call failed, bubble the error
@@ -341,13 +293,6 @@ function proxyMetamethod(proxy: any, ...: any)
 	-- Ensure that the environment and target exist
 	assert(environment and target, "The object isn't a valid Proxy.")
 
-	-- Look for a sandbox
-	local sandbox = environment:GetSandbox()
-	if sandbox then
-		-- Try to claim the running thread
-		sandbox:Claim(coroutine.running())
-	end
-
 	-- If the metamethod is __call, don't use Reflection or there'll be infinite recursion in forLua mode due to argument wrapping
 	if metamethod == "__call" then
 		return callFunctionTransformed(environment, inputMode, target, ...)
@@ -362,13 +307,6 @@ local ProxyReflection = Reflection:wrap(proxyMetamethod)
 
 -- Calls a function for the given environment, inputMode, and arguments
 function proxyFunction(environment: Environment, inputMode: "forLua" | "forBuiltin", target: (...any) -> ...any, ...: any)
-	-- Look for a sandbox
-	local sandbox = environment:GetSandbox()
-	if sandbox then
-		-- Try to claim the running thread
-		sandbox:Claim(coroutine.running())
-	end
-
 	-- Ensure that all arguments get wrapped, even if a C function is being called
 	local args = table.pack(...)
 	wrapList(environment, args)
@@ -481,21 +419,6 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		self._toProxy[target] = proxy
 	end
 
-	-- Grab the associated sandbox, if any
-	local sandbox = self:GetSandbox()
-	if sandbox then
-		-- Attempt to claim the current environment
-		sandbox:Claim(self)
-
-		-- Try to claim the proxy
-		sandbox:Claim(proxy)
-
-		-- If the target is an RBXScriptConnection, try to claim it
-		if typeof(target) == "RBXScriptConnection" then
-			sandbox:Claim(target)
-		end
-	end
-
 	return proxy
 end
 
@@ -556,10 +479,6 @@ function Environment:_applyMatch(result: RuleResult): RuleResult
 		return replacementResult
 	end
 	return result
-end
-
-function Environment:GetSandbox(): Sandbox?
-	return self._sandbox
 end
 
 function Environment:test(value: any, sortComparator: Rules.RuleComparator?): RuleResult?

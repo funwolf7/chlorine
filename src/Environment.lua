@@ -1,18 +1,4 @@
 local Reflection = require(script.Parent.Reflection)
-local Rules = require(script.Parent.Rules)
-
-type Rules = Rules.Rules
-type Rule = Rules.Rule
-type RuleResult = Rules.RuleResult
-
-export type RuleCallback = (environment: Environment, match: RuleResult) -> RuleResult?
-
-export type CustomRule = Rule & { Rule: RuleCallback; }
-export type AllowRule = Rule & { Rule: "Allow"; }
-export type BlockRule = Rule & { Rule: "Block"; }
-export type TerminateRule = Rule & { Rule: "Terminate"; }
-export type ReplaceRule = Rule & { Rule: "Replace"; Replacement: any?; }
-export type SandboxRule = CustomRule | AllowRule | BlockRule | TerminateRule | ReplaceRule
 
 local PRIMITIVE_TYPES = table.freeze({
 	["number"] = true;
@@ -27,23 +13,11 @@ local PRIMITIVE_TYPES = table.freeze({
 -- Proxy data symbol
 local PROXY_DATA = newproxy(false)
 
+-- Do nothing symbol
+local DO_NOTHING = newproxy(false)
+
 local Environment = {}
 Environment.__index = Environment
-
-Environment.rules = table.freeze({
-	Allow = function(_environment: Environment, _result: RuleResult) end;
-	Block = function(_environment: Environment, result: RuleResult)
-		return result:withValue(nil)
-	end;
-	Terminate = function(environment: Environment, result: RuleResult)
-		error("Terminate by rule.")
-		return result:withValue(nil)
-	end;
-	Replace = function(_environment: Environment, result: RuleResult)
-		local rule = result.rule :: ReplaceRule
-		return result:withValue(rule.Replacement)
-	end;
-});
 
 local function addProxy(environment)
 	environment._toProxy = setmetatable({}, {__mode="v"; __metatable="The metatable is locked."})
@@ -63,10 +37,17 @@ local function _clone(environment: Environment)
 	)
 	return addProxy(copy)
 end
+local function defaultSubstitute()
+	return DO_NOTHING
+end
+local function defaultInputMode()
+	return nil
+end
 function Environment.new()
 	local self = setmetatable({}, Environment)
-	self._rules = Rules.new()
 	self._env = {}
+	self._substitute = defaultSubstitute
+	self._inputMode = defaultInputMode
 	return table.freeze(addProxy(self))
 end
 
@@ -268,20 +249,14 @@ end
 
 -- Creates a proxy targeting a particular value
 function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin")?): proxyable
-	-- Errors must be replaced before being used
-	if isError(target) then
-		target = (target :: any).Value
-	end
-
 	-- Check if the target is a primitive
 	if PRIMITIVE_TYPES[type(target)] then
 		return target
 	end
 
-	-- Test env rules
-	local ruleResult = self:_test(target)
-	if ruleResult then
-		target = ruleResult.value
+	-- Errors must be replaced before being used
+	if isError(target) then
+		target = (target :: any).Value
 	end
 
 	-- Check if the target is already proxied
@@ -292,10 +267,14 @@ function Environment:wrap(target: proxyable, inputMode: ("forLua" | "forBuiltin"
 		return target
 	end
 
-	-- Replace the inputMode
-	if self._inputMode then
-		inputMode = self._inputMode(target) or inputMode
+	-- Substitute value
+	local substitution = self._substitute(target, DO_NOTHING)
+	if not rawequal(substitution, DO_NOTHING) then
+		target = substitution
 	end
+
+	-- Replace the inputMode
+	inputMode = self._inputMode(target) or inputMode
 
 	-- If the target is a function, use forBultin if its a CFunction
 	if not inputMode and type(target) == "function" then
@@ -396,15 +375,9 @@ function Environment:withFenv<K, V>(globals: {[K]: V})
 	return table.freeze(newEnvironment)
 end
 
-function Environment:withRules(...: SandboxRule)
+function Environment:withSubstitute(substitute: (any, any) -> any)
 	local newEnvironment = _clone(self)
-	newEnvironment._rules = newEnvironment._rules:with(...)
-	return table.freeze(newEnvironment)
-end
-
-function Environment:withoutRules(...: SandboxRule)
-	local newEnvironment = _clone(self)
-	newEnvironment._rules = newEnvironment._rules:without(...)
+	newEnvironment._substitute = substitute
 	return table.freeze(newEnvironment)
 end
 
@@ -412,37 +385,6 @@ function Environment:withInputMode(inputMode: (unknown) -> ("forLua" | "forBuilt
 	local newEnvironment = _clone(self)
 	newEnvironment._inputMode = inputMode
 	return table.freeze(newEnvironment)
-end
-
-function Environment:_applyMatch(result: RuleResult): RuleResult
-	local rule = result.rule
-
-	-- Determine what function to call to activate the rule, and return the result
-	local ruleMode = rule.Rule
-	local ruleFn = if type(ruleMode) == "function" then ruleMode else assert(Environment.rules[ruleMode], string.format("Invalid rule kind %s", ruleMode))
-	assert(type(ruleFn) == "function", "Invalid rule function.")
-
-	-- Call the rule function
-	local replacementResult = ruleFn(self, result)
-
-	-- If a replacement result was specified, return that one instead of the default
-	if replacementResult then
-		return replacementResult
-	end
-	return result
-end
-
-function Environment:_test(value: any, sortComparator: Rules.RuleComparator?): RuleResult?
-	-- Test all rules on the value
-	local ruleResult = self._rules:test(value, sortComparator)
-
-	-- If a rule matched, apply it
-	if ruleResult then
-		ruleResult = self:_applyMatch(ruleResult)
-	end
-
-	-- Return the rule result
-	return ruleResult
 end
 
 export type Environment = typeof(Environment.new())
